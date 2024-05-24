@@ -1,33 +1,39 @@
-# TODO it seems to be quite expensive to do this for each particle
-# Solution: each collision scheme has a "cache" where the specific variables are stored.
-
-
-struct ESFP_exp_exact <: CollisionScheme
+struct ESFP_china <: CollisionScheme
     prandtl_number::Float64
     relax_factor::Vector{Float64}
     scale_matrix::Vector{SMatrix{3,3,Float64,9}}
-    function ESFP_exp_exact(Pr, num_cells)
+    function ESFP_china(Pr, num_cells)
         return new(Pr, zeros(Float64, num_cells), zeros(SMatrix{3,3,Float64,9}, num_cells))
     end
 end
 
 function relax_particles!(
     particles, moments, Δt, mesh,
-    species, scheme::ESFP_exp_exact
+    species, scheme::ESFP_china
 )
     for i in eachindex(scheme.scale_matrix)
         m = moments[i]
 
+        ρ = density(m, species, cell_size(mesh))
+        T = temperature(m, species)
         p = pressure(m, species, cell_size(mesh))
+        Pᵢⱼ = ρ * m.Σ
         μ = dynamic_viscosity(m, species)
         τ = 3 / scheme.prandtl_number * μ / p
 
-        e3 = exp(-3*Δt/(τ*scheme.prandtl_number))
-        e2 = exp(-2*Δt/τ)
-        D = (e3 - e2) * m.Σ + (1 - e3) * tr(m.Σ) / 3 * I
+        ν = 1 - 3 / (2 * scheme.prandtl_number)
 
-        scheme.scale_matrix[i] = cholesky(Symmetric(D)).L
-        scheme.relax_factor[i] = exp(-Δt / τ)
+        πᵢⱼ = Pᵢⱼ - p * I
+        πᶜᵢⱼ = (1 + (1 - ν)Δt/τ)πᵢⱼ
+
+        ψₘ = (1 - (1 - ν)Δt/τ) / (1 + (1 - ν)Δt/τ)
+        ψₖ = ((1 - 3/2*Δt/τ) / (1 + 3/2*Δt/τ))^(1/3)
+
+        E = (1 - ψₖ^2) * I + πᶜᵢⱼ / p * (ψₘ - ψₖ^2)
+        E *= (Kᴮ * T / m) # In the paper this is done when updating the velocity
+
+        scheme.scale_matrix[i] = cholesky(Symmetric(E)).L
+        scheme.relax_factor[i] = ψₖ
     end
 
     for particle in particles

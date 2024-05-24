@@ -1,7 +1,3 @@
-# TODO it seems to be quite expensive to do this for each particle
-# Solution: each collision scheme has a "cache" where the specific variables are stored.
-
-
 struct ESFP_exp_exact <: CollisionScheme
     prandtl_number::Float64
     relax_factor::Vector{Float64}

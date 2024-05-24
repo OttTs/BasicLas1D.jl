@@ -1,15 +1,15 @@
-struct ESBGK_exp_exact <: CollisionScheme
+struct ESBGK_exp <: CollisionScheme
     prandtl_number::Float64
     relax_probability::Vector{Float64}
     transform_matrix::Vector{SMatrix{3,3,Float64,9}}
-    function ESBGK_exp_exact(Pr, num_cells)
+    function ESBGK_exp(Pr, num_cells)
         return new(Pr, zeros(Float64, num_cells), zeros(SMatrix{3,3,Float64,9}, num_cells))
     end
 end
 
 function relax_particles!(
     particles, moments, Δt, mesh,
-    species, scheme::ESBGK_exp_exact
+    species, scheme::ESBGK_exp
 )
     for i in eachindex(scheme.relax_probability)
         m = moments[i]
@@ -18,9 +18,8 @@ function relax_particles!(
         μ = dynamic_viscosity(m, species)
         τ = 1 / scheme.prandtl_number * μ / p
 
-        e1 = exp(-Δt/(τ*scheme.prandtl_number))
-        e2 = exp(-Δt/τ)
-        A = (e1 - e2) / (1 - e2) * m.Σ + (1 - e1) / (1 - e2) * tr(m.Σ) / 3 * I
+        ν = 1 - 1 / scheme.prandtl_number
+        A = ν * m.Σ + (1 - ν) * tr(m.Σ) / 3 * I
 
         scheme.relax_probability[i] = 1 - exp(-Δt / τ)
         scheme.transform_matrix[i] = cholesky(Symmetric(A)).L
